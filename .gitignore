@@ -125,3 +125,9 @@ testrunner\[1\]_include.cmake
 src/game/generated
 generated/
 
+# ++bisect
+build-*
+build
+src/.vscode/
+target/
+
