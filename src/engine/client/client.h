@@ -116,9 +116,12 @@ class CClient : public IClient, public CDemoPlayer::IListener
 
 	//
 	char m_aCurrentMap[256];
+	char m_aCurrentMapPath[CEditor::MAX_PATH_LENGTH];
 	unsigned m_CurrentMapCrc;
 
-	bool m_TimeoutCodeSent[2];
+	char m_aTimeoutCodes[2][32];
+	bool m_aTimeoutCodeSent[2];
+	bool m_GenerateTimeoutSeed;
 
 	//
 	char m_aCmdConnect[256];
@@ -341,6 +344,7 @@ public:
 	static void ConchainWindowBordered(IConsole::IResult *pResult, void *pUserData, IConsole::FCommandCallback pfnCallback, void *pCallbackUserData);
 	static void ConchainWindowScreen(IConsole::IResult *pResult, void *pUserData, IConsole::FCommandCallback pfnCallback, void *pCallbackUserData);
 	static void ConchainWindowVSync(IConsole::IResult *pResult, void *pUserData, IConsole::FCommandCallback pfnCallback, void *pCallbackUserData);
+	static void ConchainTimeoutSeed(IConsole::IResult *pResult, void *pUserData, IConsole::FCommandCallback pfnCallback, void *pCallbackUserData);
 
 	static void Con_DemoSlice(IConsole::IResult *pResult, void *pUserData);
 	static void Con_DemoSliceBegin(IConsole::IResult *pResult, void *pUserData);
@@ -370,8 +374,12 @@ public:
 
 	// DDRace
 
+	void GenerateTimeoutSeed();
+	void GenerateTimeoutCodes();
+
 	virtual const char* GetCurrentMap();
 	virtual int GetCurrentMapCrc();
+	virtual const char* GetCurrentMapPath();
 	virtual const char* RaceRecordStart(const char *pFilename);
 	virtual void RaceRecordStop();
 	virtual bool RaceRecordIsRecording();

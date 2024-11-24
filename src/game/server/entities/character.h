@@ -95,6 +95,7 @@ public:
 
 	bool GiveWeapon(int Weapon, bool Remove = false, int Ammo = -1);
 	void GiveNinja();
+	void RemoveNinja();
 
 	void SetEmote(int Emote, int Tick);
 
@@ -161,6 +162,7 @@ private:
 	// input
 	CNetObj_PlayerInput m_PrevInput;
 	CNetObj_PlayerInput m_Input;
+	CNetObj_PlayerInput m_SavedInput;
 	int m_NumInputs;
 	int m_Jumped;
 
@@ -210,7 +212,6 @@ private:
 	*/
 
 	void HandleTilesDDPP(int Index, int Tile1, int Tile2, int Tile3, int Tile4, int FTile1, int FTile2, int FTile3, int FTile4, int MapIndexL, int MapIndexR, int MapIndexT, int MapIndexB);
-	void DDPPDDraceTick();
 	void DDPPDDRacePostCoreTick();
 
 	// also: es gibt eine start- und endposition f�r die augen

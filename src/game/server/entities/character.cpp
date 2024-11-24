@@ -503,11 +503,7 @@ void CCharacter::HandleNinja()
 	if ((Server()->Tick() - m_Ninja.m_ActivationTick) > (g_pData->m_Weapons.m_Ninja.m_Duration * Server()->TickSpeed() / 1000))
 	{
 		// time's up, return
-		m_Ninja.m_CurrentMoveTime = 0;
-		m_aWeapons[WEAPON_NINJA].m_Got = false;
-		m_Core.m_ActiveWeapon = m_LastWeapon;
-
-		SetWeapon(m_Core.m_ActiveWeapon);
+		RemoveNinja();
 		return;
 	}
 
@@ -1045,34 +1041,6 @@ void CCharacter::HandleWeapons()
 	return;
 }
 
-bool CCharacter::GiveWeapon(int Weapon, bool Remove, int Ammo)
-{
-	if(Weapon == WEAPON_NINJA)
-	{
-		// if(Remove)
-		// 	RemoveNinja();
-		// else
-			GiveNinja();
-		return true;
-	}
-
-	if(Remove)
-	{
-		if(GetActiveWeapon() == Weapon)
-			SetActiveWeapon(WEAPON_GUN);
-	}
-	else if (m_aWeapons[Weapon].m_Ammo < g_pData->m_Weapons.m_aId[Weapon].m_Maxammo || !m_aWeapons[Weapon].m_Got)
-	{
-		m_aWeapons[Weapon].m_Ammo = Ammo;
-		if (m_FreezeTime)	//dont remove this
-			Freeze(0);		//dont remove this
-			// m_aWeapons[Weapon].m_Ammo = min(g_pData->m_Weapons.m_aId[Weapon].m_Maxammo, Ammo); // commented out by chiller
-	}
-
-	m_aWeapons[Weapon].m_Got = !Remove;
-	return !Remove;
-}
-
 void CCharacter::GiveNinja()
 {
 	m_Ninja.m_ActivationTick = Server()->Tick();
@@ -1087,6 +1055,15 @@ void CCharacter::GiveNinja()
 		GameServer()->CreateSound(m_Pos, SOUND_PICKUP_NINJA, Teams()->TeamMask(Team(), -1, m_pPlayer->GetCID()));
 }
 
+void CCharacter::RemoveNinja()
+{
+	m_Ninja.m_CurrentMoveTime = 0;
+	m_aWeapons[WEAPON_NINJA].m_Got = false;
+	m_Core.m_ActiveWeapon = m_LastWeapon;
+
+		SetWeapon(m_Core.m_ActiveWeapon);
+}
+
 void CCharacter::SetEmote(int Emote, int Tick)
 {
 	m_EmoteType = Emote;
@@ -1096,15 +1073,16 @@ void CCharacter::SetEmote(int Emote, int Tick)
 void CCharacter::OnPredictedInput(CNetObj_PlayerInput *pNewInput)
 {
 	// check for changes
-	if (mem_comp(&m_Input, pNewInput, sizeof(CNetObj_PlayerInput)) != 0)
+	if(mem_comp(&m_SavedInput, pNewInput, sizeof(CNetObj_PlayerInput)) != 0)
 		m_LastAction = Server()->Tick();
 
 	// copy new input
+	mem_copy(&m_SavedInput, pNewInput, sizeof(m_SavedInput));
 	mem_copy(&m_Input, pNewInput, sizeof(m_Input));
 	m_NumInputs++;
 
 	// it is not allowed to aim in the center
-	if (m_Input.m_TargetX == 0 && m_Input.m_TargetY == 0)
+	if(m_Input.m_TargetX == 0 && m_Input.m_TargetY == 0)
 		m_Input.m_TargetY = -1;
 }
 
@@ -3001,7 +2979,12 @@ void CCharacter::SendZoneMsgs()
 
 void CCharacter::DDRaceTick()
 {
-	if (m_Input.m_Direction != 0 || m_Input.m_Jump != 0)
+	mem_copy(&m_Input, &m_SavedInput, sizeof(m_Input));
+	if(!m_pPlayer->m_IsVanillaDmg)
+	{
+		m_Armor=(m_FreezeTime >= 0)?10-(m_FreezeTime/15):0;
+	}
+	if(m_Input.m_Direction != 0 || m_Input.m_Jump != 0)
 		m_LastMove = Server()->Tick();
 
 	if (m_FreezeTime > 0 || m_FreezeTime == -1)
@@ -3036,7 +3019,6 @@ void CCharacter::DDRaceTick()
 	}
 
 	m_Core.m_Id = GetPlayer()->GetCID();
-	DDPPDDraceTick();
 }
 
 
@@ -3215,14 +3197,40 @@ bool CCharacter::UnFreeze()
 	return false;
 }
 
+bool CCharacter::GiveWeapon(int Weapon, bool Remove, int Ammo)
+{
+	if(Weapon == WEAPON_NINJA)
+	{
+		if(Remove)
+			RemoveNinja();
+		else
+			GiveNinja();
+		return true;
+	}
+
+	if (Remove)
+	{
+		if(GetActiveWeapon() == Weapon)
+			SetActiveWeapon(WEAPON_GUN);
+	}
+	else if (m_aWeapons[Weapon].m_Ammo < g_pData->m_Weapons.m_aId[Weapon].m_Maxammo || !m_aWeapons[Weapon].m_Got)
+	{
+		m_aWeapons[Weapon].m_Ammo = Ammo;
+		if (m_FreezeTime)	//dont remove this
+			Freeze(0);		//dont remove this
+			// m_aWeapons[Weapon].m_Ammo = min(g_pData->m_Weapons.m_aId[Weapon].m_Maxammo, Ammo); // commented out by chiller
+	}
+
+	m_aWeapons[Weapon].m_Got = !Remove;
+	return !Remove;
+}
+
 void CCharacter::GiveAllWeapons()
 {
 	for (int i = WEAPON_HAMMER; i<NUM_WEAPONS - 1; i++)
 	{
-		m_aWeapons[i].m_Got = true;
-		if (!m_FreezeTime) m_aWeapons[i].m_Ammo = -1;
+		GiveWeapon(i);
 	}
-	return;
 }
 
 void CCharacter::BulletAmounts()

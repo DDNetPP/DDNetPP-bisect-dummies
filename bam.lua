@@ -383,10 +383,10 @@ function build(settings)
 		engine, zlib, libwebsockets, md5)
 
 	masterserver_exe = Link(server_settings, "mastersrv", masterserver,
-		engine, zlib, md5)
+		engine, zlib, libwebsockets, md5)
 
 	twping_exe = Link(server_settings, "twping", twping,
-		engine, zlib, md5)
+		engine, zlib, libwebsockets, md5)
 
 	-- make targets
 	if string.find(settings.config_name, "sql") then
@@ -592,7 +592,7 @@ if platform == "macosx" then
 	end
 else
 	build(debug_settings)
-	-- ChillerDragon commented out those to fix
+	-- ChillerDragon commented out those to fix (brain dragon assums that the sql release suffixes gamecontext.cpp with _sql and thus create dupe so either rename file or dont uncomment sql rls)
 	-- bam: error: job 'objs/game/server/gamecontext_sql_d.o' already exists
 	-- [string "src/driver_gcc.lua"]:21: bad argument #1 to 'AddJob' (node 'objs/game/server/gamecontext_sql_d.o' already exists)
 

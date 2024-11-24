@@ -221,7 +221,6 @@ void CGameClient::OnConsoleInit()
 	// add the some console commands
 	Console()->Register("team", "i[team-id]", CFGFLAG_CLIENT, ConTeam, this, "Switch team");
 	Console()->Register("kill", "", CFGFLAG_CLIENT, ConKill, this, "Kill yourself");
-	//Console()->Register("wallhack", "", CFGFLAG_CLIENT, ConWallhack, this, "you can see trough walls");
 
 	// register server dummy commands for tab completion
 	Console()->Register("tune", "s[tuning] i[value]", CFGFLAG_SERVER, 0, 0, "Tune variable to value");
@@ -944,9 +943,6 @@ void CGameClient::OnNewSnapshot()
 	{
 		m_Snap.m_aTeamSize[TEAM_RED] = m_Snap.m_aTeamSize[TEAM_BLUE] = 0;
 
-		for(int i = 0; i < MAX_CLIENTS; i++)
-			m_aStats[i].m_Active = false;
-
 		int Num = Client()->SnapNumItems(IClient::SNAP_CURRENT);
 		for(int i = 0; i < Num; i++)
 		{
@@ -1020,8 +1016,11 @@ void CGameClient::OnNewSnapshot()
 				if(pInfo->m_Team != TEAM_SPECTATORS)
 				{
 					m_Snap.m_aTeamSize[pInfo->m_Team]++;
-					m_aStats[pInfo->m_ClientID].m_Active = true;
+					if(!m_aStats[pInfo->m_ClientID].IsActive())
+						m_aStats[pInfo->m_ClientID].JoinGame(Client()->GameTick());
 				}
+				else if(m_aStats[pInfo->m_ClientID].IsActive())
+					m_aStats[pInfo->m_ClientID].JoinSpec(Client()->GameTick());
 
 			}
 			else if(Item.m_Type == NETOBJTYPE_CHARACTER)
@@ -1097,16 +1096,6 @@ void CGameClient::OnNewSnapshot()
 			else if(Item.m_Type == NETOBJTYPE_FLAG)
 				m_Snap.m_paFlags[Item.m_ID%2] = (const CNetObj_Flag *)pData;
 		}
-
-		for(int i = 0; i < MAX_CLIENTS; i++)
-		{
-			if(m_aStats[i].m_Active && !m_aStats[i].m_WasActive)
-			{
-				m_aStats[i].m_Active = true;
-				m_aStats[i].m_JoinDate = Client()->GameTick();
-			}
-			m_aStats[i].m_WasActive = m_aStats[i].m_Active;
-		}
 	}
 
 	// setup local pointers
@@ -1115,9 +1104,12 @@ void CGameClient::OnNewSnapshot()
 		CSnapState::CCharacterInfo *c = &m_Snap.m_aCharacters[m_Snap.m_LocalClientID];
 		if(c->m_Active)
 		{
-			m_Snap.m_pLocalCharacter = &c->m_Cur;
-			m_Snap.m_pLocalPrevCharacter = &c->m_Prev;
-			m_LocalCharacterPos = vec2(m_Snap.m_pLocalCharacter->m_X, m_Snap.m_pLocalCharacter->m_Y);
+			if(!m_Snap.m_SpecInfo.m_Active)
+			{
+				m_Snap.m_pLocalCharacter = &c->m_Cur;
+				m_Snap.m_pLocalPrevCharacter = &c->m_Prev;
+				m_LocalCharacterPos = vec2(m_Snap.m_pLocalCharacter->m_X, m_Snap.m_pLocalCharacter->m_Y);
+			}
 		}
 		else if(Client()->SnapFindItem(IClient::SNAP_PREV, NETOBJTYPE_CHARACTER, m_Snap.m_LocalClientID))
 		{
@@ -1142,7 +1134,10 @@ void CGameClient::OnNewSnapshot()
 	for(int i = 0; i < MAX_CLIENTS; ++i)
 	{
 		if(!m_Snap.m_paPlayerInfos[i] && m_aClients[i].m_Active)
+		{
 			m_aClients[i].Reset();
+			m_aStats[i].Reset();
+		}
 	}
 
 	// update friend state
@@ -1739,26 +1734,14 @@ void CGameClient::OnActivateEditor()
 
 CGameClient::CClientStats::CClientStats()
 {
-	m_JoinDate = 0;
-	m_Active = false;
-	m_WasActive = false;
-	m_Frags = 0;
-	m_Deaths = 0;
-	m_Suicides = 0;
-	for(int j = 0; j < NUM_WEAPONS; j++)
-	{
-		m_aFragsWith[j] = 0;
-		m_aDeathsFrom[j] = 0;
-	}
-	m_FlagGrabs = 0;
-	m_FlagCaptures = 0;
+	Reset();
 }
 
 void CGameClient::CClientStats::Reset()
 {
-	m_JoinDate = 0;
+	m_JoinTick = 0;
+	m_IngameTicks = 0;
 	m_Active = false;
-	m_WasActive = false;
 	m_Frags = 0;
 	m_Deaths = 0;
 	m_Suicides = 0;

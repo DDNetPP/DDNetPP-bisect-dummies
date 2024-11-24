@@ -863,18 +863,8 @@ void CEditor::CallbackOpenMap(const char *pFileName, int StorageType, void *pUse
 	CEditor *pEditor = (CEditor*)pUser;
 	if(pEditor->Load(pFileName, StorageType))
 	{
-		str_copy(pEditor->m_aFileName, pFileName, 512);
 		pEditor->m_ValidSaveFilename = StorageType == IStorage::TYPE_SAVE && pEditor->m_pFileDialogPath == pEditor->m_aFileDialogCurrentFolder;
-		pEditor->SortImages();
 		pEditor->m_Dialog = DIALOG_NONE;
-		pEditor->m_Map.m_Modified = false;
-		pEditor->m_Map.m_UndoModified = 0;
-		pEditor->m_LastUndoUpdateTime = time_get();
-	}
-	else
-	{
-		pEditor->Reset();
-		pEditor->m_aFileName[0] = 0;
 	}
 }
 
@@ -2564,6 +2554,7 @@ void CEditor::DoMapEditor(CUIRect View, CUIRect ToolBar)
 		Graphics()->TextureSet(-1);
 		Graphics()->LinesBegin();
 
+		// possible screen sizes (white border)
 		float aLastPoints[4];
 		float Start = 1.0f; //9.0f/16.0f;
 		float End = 16.0f/9.0f;
@@ -2606,7 +2597,7 @@ void CEditor::DoMapEditor(CUIRect View, CUIRect ToolBar)
 			mem_copy(aLastPoints, aPoints, sizeof(aPoints));
 		}
 
-		if(1)
+		// two screen sizes (green and red border)
 		{
 			Graphics()->SetColor(1,0,0,1);
 			for(int i = 0; i < 2; i++)
@@ -2634,8 +2625,16 @@ void CEditor::DoMapEditor(CUIRect View, CUIRect ToolBar)
 				Graphics()->SetColor(0,1,0,1);
 			}
 		}
-
 		Graphics()->LinesEnd();
+
+		// tee position (blue circle)
+		{
+			Graphics()->TextureSet(-1);
+			Graphics()->QuadsBegin();
+			Graphics()->SetColor(0,0,1,0.3f);
+			RenderTools()->DrawCircle(m_WorldOffsetX, m_WorldOffsetY, 20.0f, 32);
+			Graphics()->QuadsEnd();
+		}
 	}
 
 	if (!m_ShowPicker && m_ShowTileInfo && m_ShowEnvelopePreview != 0 && GetSelectedLayer(0) && GetSelectedLayer(0)->m_Type == LAYERTYPE_QUADS)
@@ -2791,7 +2790,7 @@ int CEditor::DoProperties(CUIRect *pToolBox, CProperty *pProps, int *pIDs, int *
 				((pProps[i].m_Value >> s_aShift[1])&0xff)/255.0f,
 				((pProps[i].m_Value >> s_aShift[2])&0xff)/255.0f,
 				1.0f);
-			
+
 			static int s_ColorPicker, s_ColorPickerID;
 			if(DoButton_ColorPicker(&s_ColorPicker, &ColorBox, &Color))
 			{
@@ -3810,9 +3809,9 @@ void CEditor::RenderFileDialog()
 	str_format(aBuf, sizeof(aBuf), "Current path: %s", aPath);
 	UI()->DoLabel(&PathBox, aBuf, 10.0f, -1, -1);
 
-	// filebox
 	if(m_FileDialogStorageType == IStorage::TYPE_SAVE)
 	{
+		// filebox
 		static float s_FileBoxID = 0;
 		UI()->DoLabel(&FileBoxLabel, "Filename:", 10.0f, -1, -1);
 		if(DoEditBox(&s_FileBoxID, &FileBox, m_aFileDialogFileName, sizeof(m_aFileDialogFileName), 10.0f, &s_FileBoxID))
@@ -3822,6 +3821,29 @@ void CEditor::RenderFileDialog()
 				if(m_aFileDialogFileName[i] == '/' || m_aFileDialogFileName[i] == '\\')
 					str_copy(&m_aFileDialogFileName[i], &m_aFileDialogFileName[i+1], (int)(sizeof(m_aFileDialogFileName))-i);
 			m_FilesSelectedIndex = -1;
+		}
+	}
+	else
+	{
+		//searchbox
+		FileBox.VSplitRight(250, &FileBox, 0);
+		CUIRect ClearBox;
+		FileBox.VSplitRight(15, &FileBox, &ClearBox);
+
+		static float s_SearchBoxID = 0;
+		UI()->DoLabel(&FileBoxLabel, "Search:", 10.0f, -1, -1);
+		DoEditBox(&s_SearchBoxID, &FileBox, m_aFileDialogSearchText, sizeof(m_aFileDialogSearchText), 10.0f, &s_SearchBoxID,false,CUI::CORNER_L);
+
+		// clearSearchbox button
+		{
+			static int s_ClearButton = 0;
+			RenderTools()->DrawUIRect(&ClearBox, vec4(1, 1, 1, 0.33f)*ButtonColorMul(&s_ClearButton), CUI::CORNER_R, 3.0f);
+			UI()->DoLabel(&ClearBox, "×", 10.0f, 0);
+			if (UI()->DoButtonLogic(&s_ClearButton, "×", 0, &ClearBox))
+			{
+				m_aFileDialogSearchText[0] = 0;
+				UI()->SetActiveItem(&s_SearchBoxID);
+			}
 		}
 	}
 
@@ -3936,6 +3958,7 @@ void CEditor::RenderFileDialog()
 	UI()->ClipEnable(&View);
 
 	for(int i = 0; i < m_FileList.size(); i++)
+		if (!m_aFileDialogSearchText[0] || str_find_nocase (m_FileList[i].m_aName, m_aFileDialogSearchText))
 		AddFileDialogEntry(i, &View);
 
 	// disable clipping again
@@ -4073,6 +4096,7 @@ void CEditor::InvokeFileDialog(int StorageType, int FileType, const char *pTitle
 	m_pfnFileDialogFunc = pfnFunc;
 	m_pFileDialogUser = pUser;
 	m_aFileDialogFileName[0] = 0;
+	m_aFileDialogSearchText[0] = 0;
 	m_aFileDialogCurrentFolder[0] = 0;
 	m_aFileDialogCurrentLink[0] = 0;
 	m_pFileDialogPath = m_aFileDialogCurrentFolder;
@@ -4895,6 +4919,7 @@ int CEditor::PopupMenuFile(CEditor *pEditor, CUIRect View)
 	static int s_SaveAsButton = 0;
 	static int s_SaveCopyButton = 0;
 	static int s_OpenButton = 0;
+	static int s_OpenCurrentMapButton = 0;
 	static int s_AppendButton = 0;
 	static int s_ExitButton = 0;
 
@@ -4927,6 +4952,22 @@ int CEditor::PopupMenuFile(CEditor *pEditor, CUIRect View)
 		}
 		else
 			pEditor->InvokeFileDialog(IStorage::TYPE_ALL, FILETYPE_MAP, "Load map", "Load", "maps", "", pEditor->CallbackOpenMap, pEditor);
+		return 1;
+	}
+
+	View.HSplitTop(2.0f, &Slot, &View);
+	View.HSplitTop(12.0f, &Slot, &View);
+	if(pEditor->DoButton_MenuItem(&s_OpenCurrentMapButton, "Load Current Map", 0, &Slot, 0, "Opens the current in game map for editing"))
+	{
+		if(pEditor->HasUnsavedData())
+		{
+			pEditor->m_PopupEventType = POPEVENT_LOADCURRENT;
+			pEditor->m_PopupEventActivated = true;
+		}
+		else
+		{
+			pEditor->LoadCurrentMap();
+		}
 		return 1;
 	}
 
@@ -4992,7 +5033,7 @@ void CEditor::RenderMenubar(CUIRect MenuBar)
 
 	MenuBar.VSplitLeft(60.0f, &s_File, &MenuBar);
 	if(DoButton_Menu(&s_File, "File", 0, &s_File, 0, 0))
-		UiInvokePopupMenu(&s_File, 1, s_File.x, s_File.y+s_File.h-1.0f, 120, 150, PopupMenuFile, this);
+		UiInvokePopupMenu(&s_File, 1, s_File.x, s_File.y+s_File.h-1.0f, 120, 160, PopupMenuFile, this);
 
 	/*
 	menubar.VSplitLeft(5.0f, 0, &menubar);
@@ -5265,10 +5306,6 @@ void CEditor::Reset(bool CreateDefault)
 	if(CreateDefault)
 		m_Map.CreateDefault(ms_EntitiesTexture);
 
-	/*
-	{
-	}*/
-
 	m_SelectedLayer = 0;
 	m_SelectedGroup = 0;
 	m_SelectedQuad = -1;
@@ -5298,6 +5335,10 @@ void CEditor::Reset(bool CreateDefault)
 
 	m_ShowEnvelopePreview = 0;
 	m_ShiftBy = 1;
+
+	m_Map.m_Modified = false;
+	m_Map.m_UndoModified = 0;
+	m_LastUndoUpdateTime = time_get();
 }
 
 int CEditor::GetLineDistance()

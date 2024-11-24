@@ -754,6 +754,7 @@ public:
 	int Save(const char *pFilename);
 	int Load(const char *pFilename, int StorageType);
 	int Append(const char *pFilename, int StorageType);
+	void LoadCurrentMap();
 	void Render();
 
 	CQuad *GetSelectedQuad();
@@ -780,6 +781,7 @@ public:
 	{
 		POPEVENT_EXIT=0,
 		POPEVENT_LOAD,
+		POPEVENT_LOADCURRENT,
 		POPEVENT_NEW,
 		POPEVENT_SAVE,
 		POPEVENT_LARGELAYER,
@@ -810,6 +812,7 @@ public:
 	char m_aFileDialogFileName[MAX_PATH_LENGTH];
 	char m_aFileDialogCurrentFolder[MAX_PATH_LENGTH];
 	char m_aFileDialogCurrentLink[MAX_PATH_LENGTH];
+	char m_aFileDialogSearchText[64];
 	char *m_pFileDialogPath;
 	bool m_aFileDialogActivate;
 	int m_FileDialogFileType;

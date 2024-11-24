@@ -15,6 +15,7 @@
 
 #include <game/client/components/menus.h>
 #include <game/client/gameclient.h>
+#include <game/editor/editor.h>
 
 #include <engine/client.h>
 #include <engine/config.h>
@@ -30,6 +31,8 @@
 #include <engine/sound.h>
 #include <engine/storage.h>
 #include <engine/textrender.h>
+
+#include <engine/external/md5/md5.h>
 
 #include <engine/shared/config.h>
 #include <engine/shared/compression.h>
@@ -346,6 +349,8 @@ CClient::CClient() : m_DemoPlayer(&m_SnapshotDelta)
 
 	m_DDNetSrvListTokenSet = false;
 	m_ReconnectTime = 0;
+
+	m_GenerateTimeoutSeed = true;
 }
 
 // ----- send functions -----
@@ -677,8 +682,51 @@ void CClient::EnterGame()
 	OnEnterGame();
 
 	ServerInfoRequest(); // fresh one for timeout protection
-	m_TimeoutCodeSent[0] = false;
-	m_TimeoutCodeSent[1] = false;
+	m_aTimeoutCodeSent[0] = false;
+	m_aTimeoutCodeSent[1] = false;
+}
+
+void GenerateTimeoutCode(char *pBuffer, unsigned Size, char *pSeed, const NETADDR &Addr, bool Dummy)
+{
+	md5_state_t Md5;
+	md5_byte_t aDigest[16];
+	md5_init(&Md5);
+
+	const char *pDummy = Dummy ? "dummy" : "normal";
+
+	md5_append(&Md5, (unsigned char *)pDummy, str_length(pDummy) + 1);
+	md5_append(&Md5, (unsigned char *)pSeed, str_length(pSeed) + 1);
+	md5_append(&Md5, (unsigned char *)&Addr, sizeof(Addr));
+	md5_finish(&Md5, aDigest);
+
+	unsigned short Random[8];
+	mem_copy(Random, aDigest, sizeof(Random));
+	generate_password(pBuffer, Size, Random, 8);
+}
+
+void CClient::GenerateTimeoutSeed()
+{
+	secure_random_password(g_Config.m_ClTimeoutSeed, sizeof(g_Config.m_ClTimeoutSeed), 16);
+}
+
+void CClient::GenerateTimeoutCodes()
+{
+	if(g_Config.m_ClTimeoutSeed[0])
+	{
+		for(int i = 0; i < 2; i++)
+		{
+			GenerateTimeoutCode(m_aTimeoutCodes[i], sizeof(m_aTimeoutCodes[i]), g_Config.m_ClTimeoutSeed, m_ServerAddress, i);
+
+			char aBuf[64];
+			str_format(aBuf, sizeof(aBuf), "timeout code '%s' (%s)", m_aTimeoutCodes[i], i == 0 ? "normal" : "dummy");
+			m_pConsole->Print(IConsole::OUTPUT_LEVEL_ADDINFO, "client", aBuf);
+		}
+	}
+	else
+	{
+		str_copy(m_aTimeoutCodes[0], g_Config.m_ClTimeoutCode, sizeof(m_aTimeoutCodes[0]));
+		str_copy(m_aTimeoutCodes[1], g_Config.m_ClDummyTimeoutCode, sizeof(m_aTimeoutCodes[1]));
+	}
 }
 
 void CClient::Connect(const char *pAddress)
@@ -714,6 +762,8 @@ void CClient::Connect(const char *pAddress)
 
 	m_InputtimeMarginGraph.Init(-150.0f, 150.0f);
 	m_GametimeMarginGraph.Init(-150.0f, 150.0f);
+
+	GenerateTimeoutCodes();
 }
 
 void CClient::DisconnectWithReason(const char *pReason)
@@ -790,6 +840,9 @@ void CClient::DummyConnect()
 	m_RconAuthed[1] = 0;
 
 	m_DummySendConnInfo = true;
+
+	g_Config.m_ClDummyCopyMoves = 0;
+	g_Config.m_ClDummyHammer = 0;
 
 	//connecting to the server
 	m_NetClient[1].Connect(&m_ServerAddress);
@@ -1095,6 +1148,7 @@ const char *CClient::LoadMap(const char *pName, const char *pFilename, unsigned 
 	m_ReceivedSnapshots[g_Config.m_ClDummy] = 0;
 
 	str_copy(m_aCurrentMap, pName, sizeof(m_aCurrentMap));
+	str_copy(m_aCurrentMapPath, pFilename, sizeof(m_aCurrentMapPath));
 	m_CurrentMapCrc = m_pMap->Crc();
 
 	return 0x0;
@@ -1706,7 +1760,7 @@ void CClient::ProcessServerPacket(CNetChunk *pPacket)
 
 			pData = (const char *)Unpacker.GetRaw(PartSize);
 
-			if(Unpacker.Error())
+			if(Unpacker.Error() || NumParts < 1 || Part < 0 || PartSize < 0)
 				return;
 
 			if(GameTick >= m_CurrentRecvTick[g_Config.m_ClDummy])
@@ -1717,8 +1771,7 @@ void CClient::ProcessServerPacket(CNetChunk *pPacket)
 					m_CurrentRecvTick[g_Config.m_ClDummy] = GameTick;
 				}
 
-				// TODO: clean this up abit
-				mem_copy((char*)m_aSnapshotIncomingData + Part*MAX_SNAPSHOT_PACKSIZE, pData, PartSize);
+				mem_copy((char*)m_aSnapshotIncomingData + Part*MAX_SNAPSHOT_PACKSIZE, pData, clamp(PartSize, 0, (int)sizeof(m_aSnapshotIncomingData) - Part*MAX_SNAPSHOT_PACKSIZE));
 				m_SnapshotParts |= 1<<Part;
 
 				if(m_SnapshotParts == (unsigned)((1<<NumParts)-1))
@@ -1870,15 +1923,15 @@ void CClient::ProcessServerPacket(CNetChunk *pPacket)
 						m_GameTime[g_Config.m_ClDummy].Update(&m_GametimeMarginGraph, (GameTick-1)*time_freq()/50, TimeLeft, 0);
 					}
 
-					if(m_ReceivedSnapshots[g_Config.m_ClDummy] > 50 && !m_TimeoutCodeSent[g_Config.m_ClDummy])
+					if(m_ReceivedSnapshots[g_Config.m_ClDummy] > 50 && !m_aTimeoutCodeSent[g_Config.m_ClDummy])
 					{
 						if(IsDDNet(&m_CurrentServerInfo))
 						{
-							m_TimeoutCodeSent[g_Config.m_ClDummy] = true;
+							m_aTimeoutCodeSent[g_Config.m_ClDummy] = true;
 							CNetMsg_Cl_Say Msg;
 							Msg.m_Team = 0;
 							char aBuf[256];
-							str_format(aBuf, sizeof(aBuf), "/timeout %s", g_Config.m_ClDummy ? g_Config.m_ClDummyTimeoutCode : g_Config.m_ClTimeoutCode);
+							str_format(aBuf, sizeof(aBuf), "/timeout %s", m_aTimeoutCodes[g_Config.m_ClDummy]);
 							Msg.m_pMessage = aBuf;
 							CMsgPacker Packer(Msg.MsgID());
 							Msg.Pack(&Packer);
@@ -1962,7 +2015,7 @@ void CClient::ProcessServerPacketDummy(CNetChunk *pPacket)
 
 			pData = (const char *)Unpacker.GetRaw(PartSize);
 
-			if(Unpacker.Error())
+			if(Unpacker.Error() || NumParts < 1 || Part < 0 || PartSize < 0)
 				return;
 
 			if(GameTick >= m_CurrentRecvTick[!g_Config.m_ClDummy])
@@ -1973,8 +2026,7 @@ void CClient::ProcessServerPacketDummy(CNetChunk *pPacket)
 					m_CurrentRecvTick[!g_Config.m_ClDummy] = GameTick;
 				}
 
-				// TODO: clean this up abit
-				mem_copy((char*)m_aSnapshotIncomingData + Part*MAX_SNAPSHOT_PACKSIZE, pData, PartSize);
+				mem_copy((char*)m_aSnapshotIncomingData + Part*MAX_SNAPSHOT_PACKSIZE, pData, clamp(PartSize, 0, (int)sizeof(m_aSnapshotIncomingData) - Part*MAX_SNAPSHOT_PACKSIZE));
 				m_SnapshotParts |= 1<<Part;
 
 				if(m_SnapshotParts == (unsigned)((1<<NumParts)-1))
@@ -2575,7 +2627,14 @@ void CClient::Run()
 	m_LocalStartTime = time_get();
 	m_SnapshotParts = 0;
 
-	srand(time(NULL));
+	if(m_GenerateTimeoutSeed)
+	{
+		GenerateTimeoutSeed();
+	}
+
+	unsigned int Seed;
+	secure_random_fill(&Seed, sizeof(Seed));
+	srand(Seed);
 
 	// init SDL
 	{
@@ -2745,6 +2804,7 @@ void CClient::Run()
 		{
 			g_Config.m_ClEditor = g_Config.m_ClEditor^1;
 			Input()->MouseModeRelative();
+			Input()->SetIMEState(true);
 		}
 
 		// render
@@ -3275,6 +3335,14 @@ void CClient::ConchainWindowVSync(IConsole::IResult *pResult, void *pUserData, I
 		pfnCallback(pResult, pCallbackUserData);
 }
 
+void CClient::ConchainTimeoutSeed(IConsole::IResult *pResult, void *pUserData, IConsole::FCommandCallback pfnCallback, void *pCallbackUserData)
+{
+	CClient *pSelf = (CClient *)pUserData;
+	pfnCallback(pResult, pCallbackUserData);
+	if(pResult->NumArguments())
+		pSelf->m_GenerateTimeoutSeed = false;
+}
+
 void CClient::RegisterCommands()
 {
 	m_pConsole = Kernel()->RequestInterface<IConsole>();
@@ -3313,6 +3381,8 @@ void CClient::RegisterCommands()
 	m_pConsole->Register("demo_speed", "i[speed]", CFGFLAG_CLIENT, Con_DemoSpeed, this, "Set demo speed");
 
 	// used for server browser update
+	m_pConsole->Chain("cl_timeout_seed", ConchainTimeoutSeed, this);
+
 	m_pConsole->Chain("br_filter_string", ConchainServerBrowserUpdate, this);
 	m_pConsole->Chain("br_filter_gametype", ConchainServerBrowserUpdate, this);
 	m_pConsole->Chain("br_filter_serveraddress", ConchainServerBrowserUpdate, this);
@@ -3505,6 +3575,11 @@ const char* CClient::GetCurrentMap()
 int CClient::GetCurrentMapCrc()
 {
 	return m_CurrentMapCrc;
+}
+
+const char* CClient::GetCurrentMapPath()
+{
+	return m_aCurrentMapPath;
 }
 
 const char* CClient::RaceRecordStart(const char *pFilename)

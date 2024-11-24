@@ -8,7 +8,6 @@
 #include <time.h>
  
 #include "system.h"
-#include "confusables.h"
 #include "ddpp_logs.h"
 
 #include <sys/types.h>
@@ -290,34 +289,6 @@ static void logger_file(const char *line)
 	io_write(logfile, line, strlen(line));
 	io_write_newline(logfile);
 	io_flush(logfile);
-
-	//log filter by ChillerDragon
-	//all rights reserved to ChillerBot.png 
-	//ChillerBot.png (c) Copyright 2017
-	//if (str_find(line, "test"))
-	//{
-	//	io_write(logfile, line, strlen(line));
-	//	io_write_newline(logfile);
-	//	io_flush(logfile);
-	//}
-	//if (str_find(line, "[demo_recorder]: Recording to")) //if starting demo record --> print cut in chat log
-	//{
-	//	time_t rawtime;
-	//	struct tm* timeinfo;
-	//	char timestr[80];
-
-	//	time(&rawtime);
-	//	timeinfo = localtime(&rawtime);
-
-	//	strftime(timestr, sizeof(timestr), "%y-%m-%d %H:%M:%S", timeinfo);
-
-	//	char aBuf[1024];
-	//	str_format(aBuf, sizeof(aBuf), "[%s]", timestr);
-	//	io_write(logfile, line, strlen(line));
-	//	io_write_newline(logfile);
-	//	io_flush(logfile);
-	//}
-
 }
 
 void dbg_logger_stdout() { dbg_logger(logger_stdout); }
@@ -2343,36 +2314,6 @@ int str_toint_base(const char *str, int base) { return strtol(str, NULL, base); 
 float str_tofloat(const char *str) { return atof(str); }
 
 
-int str_utf8_comp_names(const char *a, const char *b)
-{
-	int codeA;
-	int codeB;
-	int diff;
-
-	while(*a && *b)
-	{
-		do
-		{
-			codeA = str_utf8_decode(&a);
-		}
-		while(*a && !str_utf8_isspace(codeA));
-
-		do
-		{
-			codeB = str_utf8_decode(&b);
-		}
-		while(*b && !str_utf8_isspace(codeB));
-
-		diff = codeA - codeB;
-
-		if((diff < 0 && !str_utf8_is_confusable(codeA, codeB))
-		|| (diff > 0 && !str_utf8_is_confusable(codeB, codeA)))
-			return diff;
-	}
-
-	return *a - *b;
-}
-
 int str_utf8_isspace(int code)
 {
 	return code > 0x20 && code != 0xA0 && code != 0x034F && code != 0x2800 &&
@@ -2664,7 +2605,43 @@ int secure_random_init()
 #endif
 }
 
-void secure_random_fill(void *bytes, size_t length)
+void generate_password(char *buffer, unsigned length, unsigned short *random, unsigned random_length)
+{
+	static const char VALUES[] = "ABCDEFGHKLMNPRSTUVWXYZabcdefghjkmnopqt23456789";
+	static const size_t NUM_VALUES = sizeof(VALUES) - 1; // Disregard the '\0'.
+	unsigned i;
+	dbg_assert(length >= random_length * 2 + 1, "too small buffer");
+	dbg_assert(NUM_VALUES * NUM_VALUES >= 2048, "need at least 2048 possibilities for 2-character sequences");
+
+	buffer[random_length * 2] = 0;
+
+	for(i = 0; i < random_length; i++)
+	{
+		unsigned short random_number = random[i] % 2048;
+		buffer[2 * i + 0] = VALUES[random_number / NUM_VALUES];
+		buffer[2 * i + 1] = VALUES[random_number % NUM_VALUES];
+	}
+}
+
+#define MAX_PASSWORD_LENGTH 128
+
+void secure_random_password(char *buffer, unsigned length, unsigned pw_length)
+{
+	unsigned short random[MAX_PASSWORD_LENGTH / 2];
+	// With 6 characters, we get a password entropy of log(2048) * 6/2 = 33bit.
+	dbg_assert(length >= pw_length + 1, "too small buffer");
+	dbg_assert(pw_length >= 6, "too small password length");
+	dbg_assert(pw_length % 2 == 0, "need an even password length");
+	dbg_assert(pw_length <= MAX_PASSWORD_LENGTH, "too large password length");
+
+	secure_random_fill(random, pw_length);
+
+	generate_password(buffer, length, random, pw_length / 2);
+}
+
+#undef MAX_PASSWORD_LENGTH
+
+void secure_random_fill(void *bytes, unsigned length)
 {
 	if(!secure_random_data.initialized)
 	{

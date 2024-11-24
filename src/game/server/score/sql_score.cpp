@@ -262,7 +262,8 @@ void CSqlScore::MapVote(int ClientID, const char* MapName)
 	Tmp->m_ClientID = ClientID;
 	Tmp->m_RequestedMap = MapName;
 	str_copy(Tmp->m_aFuzzyMap, MapName, sizeof(Tmp->m_aFuzzyMap));
-	sqlstr::FuzzyString(Tmp->m_aFuzzyMap);
+	sqlstr::ClearString(Tmp->m_aFuzzyMap, sizeof(Tmp->m_aFuzzyMap));
+	sqlstr::FuzzyString(Tmp->m_aFuzzyMap, sizeof(Tmp->m_aFuzzyMap));
 
 	void *VoteThread = thread_init(ExecSqlFunc, new CSqlExecData(MapVoteThread, Tmp));
 	thread_detach(VoteThread);
@@ -357,7 +358,8 @@ void CSqlScore::MapInfo(int ClientID, const char* MapName)
 	Tmp->m_ClientID = ClientID;
 	Tmp->m_RequestedMap = MapName;
 	str_copy(Tmp->m_aFuzzyMap, MapName, sizeof(Tmp->m_aFuzzyMap));
-	sqlstr::FuzzyString(Tmp->m_aFuzzyMap);
+	sqlstr::ClearString(Tmp->m_aFuzzyMap, sizeof(Tmp->m_aFuzzyMap));
+	sqlstr::FuzzyString(Tmp->m_aFuzzyMap, sizeof(Tmp->m_aFuzzyMap));
 
 	void *InfoThread = thread_init(ExecSqlFunc, new CSqlExecData(MapInfoThread, Tmp));
 	thread_detach(InfoThread);
@@ -783,7 +785,7 @@ bool CSqlScore::ShowTeamRankThread(CSqlServer* pSqlServer, const CSqlData *pGame
 	try
 	{
 		// check sort methode
-		char aBuf[600];
+		char aBuf[2400];
 		char aNames[2300];
 		aNames[0] = '\0';
 
@@ -810,13 +812,13 @@ bool CSqlScore::ShowTeamRankThread(CSqlServer* pSqlServer, const CSqlData *pGame
 
 			for(int Row = 0; Row < Rows; Row++)
 			{
-				strcat(aNames, pSqlServer->GetResults()->getString("Name").c_str());
+				str_append(aNames, pSqlServer->GetResults()->getString("Name").c_str(), sizeof(aNames));
 				pSqlServer->GetResults()->next();
 
 				if (Row < Rows - 2)
-					strcat(aNames, ", ");
+					str_append(aNames, ", ", sizeof(aNames));
 				else if (Row < Rows - 1)
-					strcat(aNames, " & ");
+					str_append(aNames, " & ", sizeof(aNames));
 			}
 
 			pSqlServer->GetResults()->first();
@@ -927,7 +929,7 @@ bool CSqlScore::ShowTeamTop5Thread(CSqlServer* pSqlServer, const CSqlData *pGame
 	try
 	{
 		// check sort methode
-		char aBuf[512];
+		char aBuf[2400];
 
 		pSqlServer->executeSql("SET @prev := NULL;");
 		pSqlServer->executeSql("SET @previd := NULL;");
@@ -972,12 +974,12 @@ bool CSqlScore::ShowTeamTop5Thread(CSqlServer* pSqlServer, const CSqlData *pGame
 			pSqlServer->GetResults()->first();
 			for(int Row = 0; Row < Rows; Row++)
 			{
-				strcat(aNames, pSqlServer->GetResults()->getString("Name").c_str());
+				str_append(aNames, pSqlServer->GetResults()->getString("Name").c_str(), sizeof(aNames));
 
 				if (Row < aCuts[CutPos] - 1)
-					strcat(aNames, ", ");
+					str_append(aNames, ", ", sizeof(aNames));
 				else if (Row < aCuts[CutPos])
-					strcat(aNames, " & ");
+					str_append(aNames, " & ", sizeof(aNames));
 
 				Time = (float)pSqlServer->GetResults()->getDouble("Time");
 				Rank = (float)pSqlServer->GetResults()->getInt("rank");

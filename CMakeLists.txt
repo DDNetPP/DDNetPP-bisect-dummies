@@ -745,6 +745,7 @@ set(EXPECTED_DATA
   countryflags/PM.png
   countryflags/PN.png
   countryflags/PR.png
+  countryflags/PS.png
   countryflags/PT.png
   countryflags/PW.png
   countryflags/PY.png
@@ -891,6 +892,7 @@ set(EXPECTED_DATA
   languages/slovak.txt
   languages/spanish.txt
   languages/swedish.txt
+  languages/traditional_chinese.txt
   languages/turkish.txt
   languages/ukrainian.txt
   mapres/basic_freeze.png
@@ -1174,7 +1176,7 @@ generate_source("src/game/generated/server_data.h" "server_content_header")
 set_src(BASE GLOB_RECURSE src/base
   color.h
   confusables.c
-  confusables.h
+  confusables_data.h
   ddpp_logs.c
   ddpp_logs.h
   detect.h
@@ -1229,6 +1231,7 @@ set_src(ENGINE_SHARED GLOB src/engine/shared
   config.cpp
   config.h
   config_variables.h
+  config_variables_ddpp.h
   console.cpp
   console.h
   datafile.cpp
@@ -1298,11 +1301,13 @@ set_src(GAME_SHARED GLOB src/game
   localization.h
   mapitems.cpp
   mapitems.h
+  mapitems_ddpp.h
   teamscore.cpp
   teamscore.h
   tuning.h
   variables.h
   version.h
+  version_ddpp.h
   voting.h
 )
 # A bit hacky, but these are needed to register all the UUIDs, even for stuff
@@ -1354,6 +1359,7 @@ set_src(ENGINE_SERVER GLOB src/engine/server
   register.h
   server.cpp
   server.h
+  server_ddpp.cpp
   sql_connector.cpp
   sql_connector.h
   sql_server.cpp
@@ -1438,6 +1444,7 @@ set_src(GAME_SERVER GLOB_RECURSE src/game/server
   gamemodes/gamemode.h
   gameworld.cpp
   gameworld.h
+  gameworld_ddpp.cpp
   letters.cpp
   letters.h
   player.cpp
@@ -1515,6 +1522,7 @@ set_src(TOOLS GLOB src/tools
   config_common.h
   config_retrieve.cpp
   config_store.cpp
+  confusables.cpp
   crapnet.cpp
   ddpp_map_chiller.cpp
   ddpp_map_gen.cpp
